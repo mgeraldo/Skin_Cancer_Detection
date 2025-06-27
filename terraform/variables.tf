@@ -1,9 +1,3 @@
-resource "random_string" "suffix" {
-  length  = 6
-  upper   = false
-  special = false
-}
-
 variable "location" {
   description = "The Azure region where resources will be created"
   type        = string
@@ -19,7 +13,6 @@ variable "resource_group_name" {
 variable "storage_account_name" {
   description = "The unique name of the storage account for ISIC 2019 dataset"
   type        = string
-  default     = "isic2019storacct${random_string.suffix.result}"
 }
 
 variable "container_name" {
