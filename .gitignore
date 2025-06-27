@@ -4,3 +4,4 @@ terraform/deploy_infa.tfplan
 terraform/.terraform.tfstate.lock.info
 .gitignore
 terraform/terraform.tfstate
+datasets/
