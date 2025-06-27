@@ -5,3 +5,4 @@ terraform/.terraform.tfstate.lock.info
 .gitignore
 terraform/terraform.tfstate
 datasets/
+terraform/terraform.tfstate.backup
