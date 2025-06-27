@@ -27,8 +27,10 @@ resource "azurerm_storage_account" "storage" {
   allow_nested_items_to_be_public = true
 }
 
-resource "azurerm_storage_container" "container" {
-  name                  = var.container_name
-  storage_account_id  = azurerm_storage_account.storage.name.id
+# Create multiple storage containers dynamically using dynamic blocks and for_each
+resource "azurerm_storage_container" "containers" {
+  for_each              = toset(var.container_names)
+  name                  = each.value
+  storage_account_id    = azurerm_storage_account.storage.id
   container_access_type = "blob"
 }

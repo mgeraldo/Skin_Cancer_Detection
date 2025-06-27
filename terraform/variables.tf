@@ -5,13 +5,13 @@ variable "location" {
 }
 
 variable "resource_group_name" {
-  description = "The name of the resource group for ISIC 2019 dataset"
+  description = "The name of the resource group for image dataset"
   type        = string
-  default     = "isic2019-resource-group"
+  default     = "rg-w281-skinvision"
 }
 
-variable "container_name" {
-  description = "The name of the blob container for ISIC 2019 dataset"
-  type        = string
-  default     = "isic2019-images"
+variable "container_names" {
+  description = "List of container names to create"
+  type        = list(string)
+  default     = ["isic2019-images", "ham-10_000-images"]
 }
