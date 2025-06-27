@@ -19,10 +19,28 @@
 - Added comments to clarify the purpose of the Terraform configuration for the Azure Storage Account.
 - Enhanced the documentation in the Terraform files for better understanding.
 
+### Version 1.4.0
+- Added dataset files `ham_with_diagnosis.csv` and `isic_with_ground_truth.csv` to the project.
+- Updated `.gitignore` to exclude these dataset files from version control.
+
 ### Future Updates
 - Plans to integrate automated testing for Terraform configurations.
 - Potential enhancements to support additional Azure resources based on user feedback.
 
 ## Project Overview
 
-This project provisions Azure resources for the ISIC 2019 dataset using Terraform. It includes detailed documentation and structured files to facilitate easy customization and deployment.
+This project provisions Azure resources for the ISIC 2019 dataset using Terraform. It includes detailed documentation and structured files to facilitate easy customization and deployment. 
+
+### Datasets
+The project now includes two datasets:
+- **ISIC 2019 Dataset**: Contains images and their corresponding ground truth diagnoses.
+- **HAM10000 Dataset**: Contains images with associated diagnoses for skin lesions.
+```
+
+### Summary of Changes
+1. **Changelog**: Added a new version (1.4.0) with details about the new dataset files and updates to `.gitignore`.
+2. **Project Overview**: Added a new section to describe the datasets included in the project.
+
+## Project Overview
+
+:TODO
