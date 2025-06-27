@@ -1,3 +1,7 @@
+# This Terraform configuration sets up an Azure Storage Account and a Blob Container for the ISIC 2019 dataset.
+
+# Generate a random suffix for the storage account name to ensure uniqueness
+# The suffix is 8 characters long, lowercase, and does not include special characters or numbers
 resource "random_string" "suffix" {
   length  = 8
   upper   = false
@@ -6,6 +10,7 @@ resource "random_string" "suffix" {
   numeric = false
 }
 
+# Define the resource group, storage account, and blob container
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
   location = var.location
