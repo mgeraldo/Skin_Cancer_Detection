@@ -13,5 +13,5 @@ variable "resource_group_name" {
 variable "container_names" {
   description = "List of container names to create"
   type        = list(string)
-  default     = ["isic2019-images", "ham-10_000-images"]
+  default     = ["isic2019-images", "ham-10000-images"]
 }
