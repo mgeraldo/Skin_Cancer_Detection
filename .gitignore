@@ -6,3 +6,5 @@ terraform/.terraform.tfstate.lock.info
 terraform/terraform.tfstate
 datasets/
 terraform/terraform.tfstate.backup
+data/ham_with_diagnosis.csv
+data/isic_with_ground_truth.csv
