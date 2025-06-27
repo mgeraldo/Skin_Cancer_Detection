@@ -29,7 +29,7 @@
 
 ## Project Overview
 
-This project provisions Azure resources for the ISIC 2019 dataset using Terraform. It includes detailed documentation and structured files to facilitate easy customization and deployment. 
+TODO
 
 ### Datasets
 The project now includes two datasets:
@@ -40,7 +40,3 @@ The project now includes two datasets:
 ### Summary of Changes
 1. **Changelog**: Added a new version (1.4.0) with details about the new dataset files and updates to `.gitignore`.
 2. **Project Overview**: Added a new section to describe the datasets included in the project.
-
-## Project Overview
-
-:TODO
