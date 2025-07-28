@@ -493,7 +493,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <div align="center">
 
-**SkinVision - Advancing Dermatological AI for Better Healthcare 🏥**
+**SkinVision - Advancing Dermatological AI for Better Healthcare**
 
 *Built with ❤️ for the UC Berkeley MIDS W281 Computer Vision Course*
 
