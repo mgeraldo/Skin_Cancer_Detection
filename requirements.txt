@@ -16,6 +16,9 @@ torch>=2.0.0
 torchvision>=0.15.0
 torchaudio>=2.0.0
 
+# Pre-trained Models
+efficientnet-pytorch>=0.7.1
+
 # ================================
 # CORE DEPENDENCIES
 # ================================
