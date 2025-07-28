@@ -411,7 +411,7 @@ def main():
     if os.path.exists(metadata_path):
         metadata_df = pd.read_csv(metadata_path)
         
-        # Create balanced dataset strategy - FIXED to handle tuple return
+        # Create balanced dataset strategy
         augmentation_strategy, balanced_metadata_df = preprocessor.create_balanced_dataset(
             metadata_df, 
             target_samples_per_class=500  # Smaller for testing
