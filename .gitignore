@@ -12,3 +12,6 @@ notebooks/features_batches
 images/
 data/isic_images/
 scripts/__pycache__/
+data/ISIC_2019_Training_Metadata.csv
+.gitignore
+data/ISIC_2019_Training_GroundTruth.csv
