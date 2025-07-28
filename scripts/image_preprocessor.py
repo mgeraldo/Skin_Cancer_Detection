@@ -92,7 +92,8 @@ class ImagePreprocessor:
             if np.any(mask):
                 radial_means[i] = np.mean(gray[mask])
         
-        # Normalize radial profile properly
+        # Normalize the radial brightness profile by dividing each value by the maximum value.
+        # This scales the profile to the range [0, 1], making it easier to compare against the threshold.
         if np.max(radial_means) > 0:
             radial_means = radial_means / np.max(radial_means)  # Normalize to 0-1 based on actual max
 
