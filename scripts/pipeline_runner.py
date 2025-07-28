@@ -20,7 +20,7 @@ import pandas as pd
 import numpy as np
 import json
 from tqdm import tqdm
-from PIL import Image  # Add this line
+from PIL import Image
 
 # Import our pipeline components
 from data_loader import AzureBlobLoader
