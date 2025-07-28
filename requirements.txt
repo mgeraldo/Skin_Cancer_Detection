@@ -1,0 +1,60 @@
+# requirements.txt - Complete Requirements for ISIC 2019 SkinVision Project
+
+# ================================
+# SYSTEM REQUIREMENTS
+# ================================
+# Python >= 3.8 (Tested with 3.12.7)
+
+# ================================
+# CORE DEPENDENCIES
+# ================================
+
+# Data Processing & Analysis
+pandas>=1.5.0
+numpy>=1.21.0
+
+# Computer Vision & Image Processing
+opencv-python>=4.7.0
+Pillow>=9.5.0
+scikit-image>=0.20.0
+
+# Machine Learning & Feature Extraction  
+scikit-learn>=1.2.0
+PyWavelets>=1.4.1
+
+# Data Visualization
+matplotlib>=3.6.0
+seaborn>=0.12.0
+
+# Progress & Utilities
+tqdm>=4.64.0
+requests>=2.28.0
+
+# ================================
+# DEVELOPMENT DEPENDENCIES (Optional)
+# ================================
+
+# Jupyter Notebook Support
+jupyter>=1.0.0
+ipykernel>=6.20.0
+notebook>=6.5.0
+
+# ================================
+# COLAB COMPATIBILITY NOTES
+# ================================
+# Most packages come pre-installed in Google Colab.
+# You may only need to install:
+!pip install PyWavelets
+!pip install opencv-python  # if not available
+
+# ================================
+# USAGE EXAMPLES
+# ================================
+# Install all requirements:
+# pip install -r requirements.txt
+#
+# Install only production requirements:
+# pip install -r requirements-prod.txt
+#
+# For Colab (minimal install):
+# pip install -r requirements-colab.txt
