@@ -53,8 +53,8 @@ Automated diagnosis of skin lesions from dermatoscopic images using the ISIC 201
 - **VGG16 Transfer Learning**: State-of-the-art deep learning for medical image classification
 - **Class-Balanced Training**: Weighted loss functions for imbalanced medical data
 - **GPU-Optimized Pipeline**: Pre-augmentation strategy for maximum GPU utilization
-- **☁️ Azure Integration**: Seamless data loading from Azure Blob Storage
-- **🔬 Advanced Image Processing**: Vignette detection, circular cropping, intelligent resizing
+- **Azure Integration**: Seamless data loading from Azure Blob Storage
+- **Advanced Image Processing**: Vignette detection, circular cropping, intelligent resizing
 - **Comprehensive Evaluation**: Confusion matrices, per-class metrics, and medical-focused analysis
 - **Production-Ready Models**: Complete model checkpointing and inference export
 - **Feature Extraction**: Traditional ML features (HOG, LBP, GLCM, Wavelet) + Deep features
@@ -67,13 +67,13 @@ Automated diagnosis of skin lesions from dermatoscopic images using the ISIC 201
 ### Deep Learning Pipeline
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐    ┌──────────────────┐
-│   Data Loader   │ -> │ Image Processor  │ -> │  VGG16 Model    │ -> │   Evaluation     │
-│                 │    │                  │    │                 │    │                  │
-│ • Azure Blob    │    │ • Vignette Detect│    │ • Transfer Learn│    │ • Confusion Matrix│
+┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐    ┌────────────────────┐
+│   Data Loader   │ -> │ Image Processor  │ -> │  VGG16 Model     │ -> │   Evaluation       │
+│                 │    │                  │    │                  │    │                    │
+│ • Azure Blob    │    │ • Vignette Detect│    │ • Transfer Learn │    │ • Confusion Matrix │
 │ • Metadata CSV  │    │ • Circular Crop  │    │ • Feature Extract│    │ • Per-class Metrics│
-│ • Batch Download│    │ • Augmentation   │    │ • 9-Class Output│    │ • Medical Analysis│
-└─────────────────┘    └──────────────────┘    └─────────────────┘    └──────────────────┘
+│ • Batch Download│    │ • Augmentation   │    │ • 9-Class Output │    │ • Medical Analysis │
+└─────────────────┘    └──────────────────┘    └──────────────────┘    └────────────────────┘
 ```
 
 ### VGG16 Transfer Learning Architecture
@@ -306,7 +306,7 @@ Our notebooks provide comprehensive analysis:
 - **Class Imbalance**: Significant variation in class sizes (NV: ~12,000, DF: ~100)
 - **Image Quality**: Vignette detection crucial for ~30% of images
 - **Feature Performance**: Deep features outperform traditional features significantly
-- **🚀 GPU Optimization**: Pre-augmentation strategy improves training efficiency by ~3x
+- **GPU Optimization**: Pre-augmentation strategy improves training efficiency by ~3x
 - **Medical Relevance**: Class-weighted training essential for balanced diagnostic performance
 
 ---
@@ -334,10 +334,10 @@ Our notebooks provide comprehensive analysis:
 1. **Transfer Learning**: Leverage pre-trained VGG16 for superior feature extraction
 2. **Class Balancing**: Weighted loss functions for medical data imbalance
 3. **Pre-Augmentation**: Generate all image variants during preprocessing
-4. **📦 Batch Processing**: Efficient memory management with configurable batch sizes
-5. **⚡ Concurrent Operations**: Multi-threaded downloading and processing
+4. **Batch Processing**: Efficient memory management with configurable batch sizes
+5. **Concurrent Operations**: Multi-threaded downloading and processing
 6. **Smart Caching**: Avoid recomputation of processed data
-7. **🧹 Memory Management**: Garbage collection and resource cleanup
+7. **Memory Management**: Garbage collection and resource cleanup
 8. **Early Stopping**: Prevent overfitting with validation-based stopping
 
 ---
