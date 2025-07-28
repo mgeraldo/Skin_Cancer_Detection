@@ -20,6 +20,7 @@ import logging
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import gc  # Add to imports
+import math  # Add to imports at top
 
 
 class ImagePreprocessor:
@@ -53,7 +54,7 @@ class ImagePreprocessor:
     
     def detect_circular_vignette(self, 
                                image: np.ndarray, 
-                               brightness_threshold: float = 100, 
+                               brightness_threshold: float = 0.95,  # Changed back to 0-1 range
                                display: bool = False) -> Tuple[np.ndarray, int, int]:
         """
         Detect and remove circular vignettes based on radial brightness profile.
@@ -284,14 +285,19 @@ class ImagePreprocessor:
                 try:
                     # Get image metadata - more robust matching
                     image_name = os.path.splitext(os.path.basename(image_path))[0]
-                    # Try exact match first
+                    image_row = None  # Use None instead of empty DataFrame
+
+                    # Strategy 1: Exact match
                     image_row = metadata_df[metadata_df['image'] == image_name]
-                    # If not found, try with .jpg extension
+
+                    # Strategy 2: Try with .jpg extension
                     if image_row.empty:
                         image_row = metadata_df[metadata_df['image'] == f"{image_name}.jpg"]
-                    # If still not found, try without any extension in metadata
+
+                    # Strategy 3: Strip .jpg from metadata and match
                     if image_row.empty:
-                        image_row = metadata_df[metadata_df['image'].str.replace('.jpg', '') == image_name]
+                        clean_image_column = metadata_df['image'].str.replace('.jpg', '', regex=False)
+                        image_row = metadata_df[clean_image_column == image_name]
                     
                     if image_row.empty:
                         self.logger.warning(f"No metadata found for {image_name}")
@@ -377,8 +383,8 @@ class ImagePreprocessor:
                 
             else:
                 # Upsample - determine needed augmentations
-                needed_count = target_samples_per_class - current_count
-                augs_needed = (needed_count // current_count) + 1
+                total_needed = target_samples_per_class
+                augs_needed = math.ceil(total_needed / current_count)  # Total augmentations per image
                 
                 # Select augmentation methods
                 selected_augs = self.augmentation_methods[:min(augs_needed, len(self.augmentation_methods))]
@@ -404,19 +410,19 @@ def main():
     if os.path.exists(metadata_path):
         metadata_df = pd.read_csv(metadata_path)
         
-        # Create balanced dataset strategy
-        augmentation_strategy = preprocessor.create_balanced_dataset(
+        # Create balanced dataset strategy - FIXED to handle tuple return
+        augmentation_strategy, balanced_metadata_df = preprocessor.create_balanced_dataset(
             metadata_df, 
             target_samples_per_class=500  # Smaller for testing
         )
         
-        # Process images
-        image_paths = metadata_df['local_path'].tolist()[:100]  # Test with first 100
+        # Use balanced metadata instead of original
+        image_paths = balanced_metadata_df['local_path'].tolist()[:100]  # Test with first 100
         
         result_df = preprocessor.preprocess_batch(
             image_paths=image_paths,
             output_dir='../images/processed',
-            metadata_df=metadata_df,
+            metadata_df=balanced_metadata_df,  # Use balanced metadata
             augmentations_per_class=augmentation_strategy
         )
         
