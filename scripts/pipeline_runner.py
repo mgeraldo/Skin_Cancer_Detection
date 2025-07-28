@@ -141,7 +141,7 @@ class SkinVisionPipeline:
                         max_images=max_images_per_dataset,
                         batch_size=self.batch_size
                     )
-                    # Keep dx column as is - don't rename since image_preprocessor expects 'dx'
+                    # Pass the column name explicitly to the image_preprocessor to reduce tight coupling
                         
                 elif dataset == "ham10000":
                     # HAM10000 is not implemented yet in data_loader
