@@ -299,7 +299,6 @@ def main():
     isic_df = loader.prepare_isic_dataset(
         local_dir='../images/isic',
         max_images=None  # Set to None to download all images
-        # Removed max_images=10  # This was limiting to only 10 images
     )
     
     print(f"Downloaded {len(isic_df)} ISIC images")
