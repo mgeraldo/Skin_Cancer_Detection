@@ -128,15 +128,13 @@ class SkinVisionPipeline:
             
             try:
                 if dataset == "isic_2019":
-                    # Use the correct method name
+                    # Use the correct method name and parameters
                     df = self.data_loader.prepare_isic_dataset(
                         local_dir=str(self.base_output_dir / "data" / "raw"),
                         max_images=max_images_per_dataset,
                         batch_size=self.batch_size
                     )
-                    # Rename dx column to diagnosis for consistency
-                    if 'dx' in df.columns:
-                        df = df.rename(columns={'dx': 'diagnosis'})
+                    # Keep dx column as is - don't rename since image_preprocessor expects 'dx'
                         
                 elif dataset == "ham10000":
                     # HAM10000 is not implemented yet in data_loader
@@ -193,22 +191,35 @@ class SkinVisionPipeline:
                 output_dir = self.base_output_dir / "images" / "processed" / dataset
                 output_dir.mkdir(parents=True, exist_ok=True)
                 
-                # Run preprocessing - use correct method names
                 if apply_augmentation and balance_dataset:
-                    # Full preprocessing with balanced augmentation
-                    preprocessed_df = self.image_preprocessor.create_balanced_dataset(
-                        df=df,
+                    # FIXED: Use correct method signature and handle return tuple
+                    augmentation_strategy, balanced_df = self.image_preprocessor.create_balanced_dataset(
+                        metadata_df=df,  # Fixed parameter name
+                        target_samples_per_class=1000
+                    )
+                    
+                    # Now process the balanced dataset with augmentations
+                    preprocessed_df = self.image_preprocessor.preprocess_batch(
+                        image_paths=balanced_df['local_path'].tolist(),
                         output_dir=str(output_dir),
+                        metadata_df=balanced_df,
+                        augmentations_per_class=augmentation_strategy,  # Fixed parameter name
                         batch_size=self.batch_size
                     )
                 else:
-                    # Standard preprocessing - use correct method name
+                    # FIXED: Use correct method signature - no apply_augmentations parameter
+                    augmentations_per_class = None
+                    if apply_augmentation:
+                        # Create simple augmentation strategy for all classes
+                        unique_classes = df['dx'].unique() if 'dx' in df.columns else []
+                        augmentations_per_class = {cls: ['rot90', 'flip_h'] for cls in unique_classes}
+                    
                     preprocessed_df = self.image_preprocessor.preprocess_batch(
                         image_paths=df['local_path'].tolist(),
-                        metadata_df=df,
                         output_dir=str(output_dir),
-                        batch_size=self.batch_size,
-                        apply_augmentations=apply_augmentation
+                        metadata_df=df,
+                        augmentations_per_class=augmentations_per_class,  # Fixed parameter name
+                        batch_size=self.batch_size
                     )
                 
                 preprocessed_dfs[dataset] = preprocessed_df
@@ -251,10 +262,10 @@ class SkinVisionPipeline:
             
             try:
                 # Get image paths - handle different possible column names
-                if 'local_path' in df.columns:
-                    image_paths = df['local_path'].tolist()
-                elif 'output_path' in df.columns:
+                if 'output_path' in df.columns:
                     image_paths = df['output_path'].tolist()
+                elif 'local_path' in df.columns:
+                    image_paths = df['local_path'].tolist()
                 else:
                     # Try any path-like column
                     path_cols = [col for col in df.columns if 'path' in col.lower()]
