@@ -19,7 +19,7 @@ from typing import List, Dict, Tuple, Optional
 import logging
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import gc  # Add to imports
+import gc
 import math  # Add to imports at top
 
 
