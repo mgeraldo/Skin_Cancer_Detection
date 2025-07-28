@@ -9,3 +9,6 @@ terraform/terraform.tfstate.backup
 data/ham_with_diagnosis.csv
 data/isic_with_ground_truth.csv
 notebooks/features_batches
+images/
+data/isic_images/
+scripts/__pycache__/
