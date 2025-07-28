@@ -143,10 +143,7 @@ class SkinVisionPipeline:
                     )
                     # Pass the column name explicitly to the image_preprocessor to reduce tight coupling
                         
-                elif dataset == "ham10000":
-                    # HAM10000 is not implemented yet in data_loader
-                    self.logger.warning(f"HAM10000 dataset loading not implemented yet")
-                    continue
+# Removed placeholder code for the "ham10000" dataset.
                 else:
                     self.logger.error(f"Unknown dataset: {dataset}")
                     continue
