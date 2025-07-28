@@ -338,8 +338,8 @@ class SkinVisionPipeline:
             Dictionary of all extracted features
         """
         pipeline_start = time.time()
-        
-        self.logger.info("🚀 STARTING SKINVISION PIPELINE")
+
+        self.logger.info("STARTING SKINVISION PIPELINE")
         self.logger.info(f"Datasets: {datasets}")
         self.logger.info(f"Max images per dataset: {max_images_per_dataset}")
         self.logger.info(f"Apply augmentation: {apply_augmentation}")
@@ -377,12 +377,12 @@ class SkinVisionPipeline:
             self._generate_pipeline_summary(metadata_dfs, preprocessed_dfs, all_features)
             
             elapsed = time.time() - pipeline_start
-            self.logger.info(f"🎉 PIPELINE COMPLETED SUCCESSFULLY in {elapsed:.2f} seconds")
+            self.logger.info(f"PIPELINE COMPLETED SUCCESSFULLY in {elapsed:.2f} seconds")
             
             return all_features
             
         except Exception as e:
-            self.logger.error(f"❌ PIPELINE FAILED: {e}")
+            self.logger.error(f"PIPELINE FAILED: {e}")
             raise
     
     def _generate_pipeline_summary(self, 
@@ -495,11 +495,11 @@ def main():
             force_reload=args.force_reload
         )
         
-        print(f"\n🎉 Pipeline completed successfully!")
+        print(f"\nPipeline completed successfully!")
         print(f"Results saved to: {args.output_dir}")
         
     except Exception as e:
-        print(f"\n❌ Pipeline failed: {e}")
+        print(f"\nPipeline failed: {e}")
         sys.exit(1)
 
 
