@@ -19,6 +19,8 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 import json
+from tqdm import tqdm
+from PIL import Image  # Add this line
 
 # Import our pipeline components
 from data_loader import AzureBlobLoader
@@ -88,6 +90,7 @@ class SkinVisionPipeline:
         directories = [
             "data/raw",
             "data/metadata", 
+            "data/augmented",  # New: for pre-augmented images
             "images/processed",
             "features/batches",
             "features/final",
@@ -111,7 +114,7 @@ class SkinVisionPipeline:
         Args:
             datasets: List of datasets to load ["isic_2019", "ham10000"]
             max_images_per_dataset: Limit images per dataset for testing
-            force_reload: Force re-download even if files exist
+            force_reload: Force re-download even if files exists
             
         Returns:
             Dictionary of loaded metadata DataFrames
@@ -192,22 +195,22 @@ class SkinVisionPipeline:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 
                 if apply_augmentation and balance_dataset:
-                    # FIXED: Use correct method signature and handle return tuple
+                    # STEP 1: Create balanced strategy (no processing yet)
                     augmentation_strategy, balanced_df = self.image_preprocessor.create_balanced_dataset(
-                        metadata_df=df,  # Fixed parameter name
+                        metadata_df=df,
                         target_samples_per_class=1000
                     )
                     
-                    # Now process the balanced dataset with augmentations
+                    # STEP 2: Now actually process the balanced dataset with augmentations
                     preprocessed_df = self.image_preprocessor.preprocess_batch(
                         image_paths=balanced_df['local_path'].tolist(),
                         output_dir=str(output_dir),
                         metadata_df=balanced_df,
-                        augmentations_per_class=augmentation_strategy,  # Fixed parameter name
+                        augmentations_per_class=augmentation_strategy,
                         batch_size=self.batch_size
                     )
                 else:
-                    # FIXED: Use correct method signature - no apply_augmentations parameter
+                    # Standard preprocessing without balancing
                     augmentations_per_class = None
                     if apply_augmentation:
                         # Create simple augmentation strategy for all classes
@@ -218,7 +221,7 @@ class SkinVisionPipeline:
                         image_paths=df['local_path'].tolist(),
                         output_dir=str(output_dir),
                         metadata_df=df,
-                        augmentations_per_class=augmentations_per_class,  # Fixed parameter name
+                        augmentations_per_class=augmentations_per_class,
                         batch_size=self.batch_size
                     )
                 
@@ -261,13 +264,11 @@ class SkinVisionPipeline:
             self.logger.info(f"Extracting features for dataset: {dataset}")
             
             try:
-                # Get image paths - handle different possible column names
-                if 'output_path' in df.columns:
-                    image_paths = df['output_path'].tolist()
-                elif 'local_path' in df.columns:
+                # Get image paths - the preprocess_batch method returns 'local_path' column
+                if 'local_path' in df.columns:
                     image_paths = df['local_path'].tolist()
                 else:
-                    # Try any path-like column
+                    # Try any path-like column as fallback
                     path_cols = [col for col in df.columns if 'path' in col.lower()]
                     if path_cols:
                         image_paths = df[path_cols[0]].tolist()
@@ -329,6 +330,162 @@ class SkinVisionPipeline:
         
         return all_features
     
+    def run_preaugmentation(self, 
+                           metadata_dfs: Dict[str, pd.DataFrame],
+                           balance_dataset: bool = True,
+                           target_samples_per_class: int = 1000) -> Dict[str, pd.DataFrame]:
+        """
+        NEW: Pre-generate and store all augmented images for GPU-optimized training.
+        
+        Args:
+            metadata_dfs: Original metadata DataFrames from data loading
+            balance_dataset: Whether to balance classes through augmentation
+            target_samples_per_class: Target number of samples per class
+            
+        Returns:
+            Dictionary of augmented metadata DataFrames
+        """
+        self.logger.info("="*50)
+        self.logger.info("STEP 2: PRE-AUGMENTATION (GPU OPTIMIZED)")
+        self.logger.info("="*50)
+        
+        start_time = time.time()
+        augmented_dfs = {}
+        
+        for dataset, df in metadata_dfs.items():
+            self.logger.info(f"Pre-augmenting dataset: {dataset}")
+            
+            try:
+                # Create augmented output directory for this dataset
+                augmented_dir = self.base_output_dir / "data" / "augmented" / dataset
+                augmented_dir.mkdir(parents=True, exist_ok=True)
+                
+                if balance_dataset:
+                    # Step 1: Create balanced augmentation strategy
+                    augmentation_strategy, balanced_df = self.image_preprocessor.create_balanced_dataset(
+                        metadata_df=df,
+                        target_samples_per_class=target_samples_per_class
+                    )
+                    
+                    self.logger.info(f"Augmentation strategy: {augmentation_strategy}")
+                    
+                    # Step 2: Pre-generate ALL augmented images
+                    augmented_metadata = []
+                    
+                    for class_name, aug_methods in augmentation_strategy.items():
+                        class_data = balanced_df[balanced_df['dx'] == class_name]
+                        
+                        self.logger.info(f"Pre-augmenting {len(class_data)} {class_name} images with {aug_methods}")
+                        
+                        for _, row in tqdm(class_data.iterrows(), 
+                                         desc=f"Processing {class_name}", 
+                                         total=len(class_data)):
+                            
+                            original_path = row['local_path']
+                            image_name = row['image']
+                            
+                            # Generate all augmentations for this image
+                            processed_images = self.image_preprocessor.preprocess_single_image(
+                                original_path, 
+                                augmentations=aug_methods
+                            )
+                            
+                            # Save each augmented version
+                            for processed_img, aug_method in zip(processed_images, aug_methods):
+                                # Create filename for augmented image
+                                if image_name.endswith('.jpg'):
+                                    base_name = image_name[:-4]
+                                else:
+                                    base_name = image_name
+                                
+                                aug_filename = f"{base_name}_aug_{aug_method}.jpg"
+                                aug_path = augmented_dir / aug_filename
+                                
+                                # Save augmented image
+                                pil_img = Image.fromarray(processed_img.astype(np.uint8))
+                                pil_img.save(aug_path)
+                                
+                                # Record metadata for augmented image
+                                augmented_metadata.append({
+                                    'original_image': image_name,
+                                    'augmented_image': aug_filename,
+                                    'local_path': str(aug_path),
+                                    'dx': class_name,
+                                    'augmentation': aug_method,
+                                    'width': self.target_size[0],
+                                    'height': self.target_size[1]
+                                })
+                    
+                    # Create augmented DataFrame
+                    augmented_df = pd.DataFrame(augmented_metadata)
+                    
+                else:
+                    # No balancing - just basic preprocessing and minimal augmentation
+                    augmented_metadata = []
+                    
+                    self.logger.info(f"Basic preprocessing for {len(df)} images")
+                    
+                    for _, row in tqdm(df.iterrows(), desc="Basic processing", total=len(df)):
+                        original_path = row['local_path']
+                        image_name = row['image']
+                        label = row['dx']
+                        
+                        # Just basic preprocessing (no augmentation)
+                        processed_images = self.image_preprocessor.preprocess_single_image(
+                            original_path, 
+                            augmentations=['rot0']  # Just original
+                        )
+                        
+                        if processed_images:
+                            processed_img = processed_images[0]
+                            
+                            # Create filename
+                            if image_name.endswith('.jpg'):
+                                base_name = image_name[:-4]
+                            else:
+                                base_name = image_name
+                            
+                            proc_filename = f"{base_name}_processed.jpg"
+                            proc_path = augmented_dir / proc_filename
+                            
+                            # Save processed image
+                            pil_img = Image.fromarray(processed_img.astype(np.uint8))
+                            pil_img.save(proc_path)
+                            
+                            augmented_metadata.append({
+                                'original_image': image_name,
+                                'augmented_image': proc_filename,
+                                'local_path': str(proc_path),
+                                'dx': label,
+                                'augmentation': 'rot0',
+                                'width': self.target_size[0],
+                                'height': self.target_size[1]
+                            })
+                    
+                    augmented_df = pd.DataFrame(augmented_metadata)
+                
+                augmented_dfs[dataset] = augmented_df
+                
+                # Save augmented metadata
+                metadata_file = self.base_output_dir / "data" / "metadata" / f"{dataset}_augmented.csv"
+                augmented_df.to_csv(metadata_file, index=False)
+                
+                # Log class distribution
+                if 'dx' in augmented_df.columns:
+                    class_counts = augmented_df['dx'].value_counts()
+                    self.logger.info(f"{dataset} augmented class distribution:\n{class_counts}")
+                
+                self.logger.info(f"{dataset}: {len(augmented_df)} augmented images pre-generated, metadata saved to {metadata_file}")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to pre-augment {dataset}: {e}")
+                continue
+        
+        elapsed = time.time() - start_time
+        self.logger.info(f"Pre-augmentation completed in {elapsed:.2f} seconds")
+        
+        return augmented_dfs
+
     def run_complete_pipeline(self,
                             datasets: List[str] = ["isic_2019"],
                             max_images_per_dataset: Optional[int] = None,
@@ -396,6 +553,54 @@ class SkinVisionPipeline:
             self.logger.error(f"PIPELINE FAILED: {e}")
             raise
     
+    def run_complete_pipeline_optimized(self,
+                                  datasets: List[str] = ["isic_2019"],
+                                  max_images_per_dataset: Optional[int] = None,
+                                  apply_augmentation: bool = True,
+                                  balance_dataset: bool = True,
+                                  force_reload: bool = False,
+                                  target_samples_per_class: int = 1000) -> Dict[str, Dict[str, np.ndarray]]:
+        """GPU-optimized pipeline with pre-augmentation."""
+        pipeline_start = time.time()
+
+        self.logger.info("STARTING GPU-OPTIMIZED SKINVISION PIPELINE")
+        
+        try:
+            # Step 1: Data Loading (download originals)
+            metadata_dfs = self.run_data_loading(
+                datasets=datasets,
+                max_images_per_dataset=max_images_per_dataset,
+                force_reload=force_reload
+            )
+            
+            # Step 2: Pre-Augmentation (GPU-optimized)
+            if apply_augmentation:
+                augmented_dfs = self.run_preaugmentation(
+                    metadata_dfs=metadata_dfs,
+                    balance_dataset=balance_dataset,
+                    target_samples_per_class=target_samples_per_class
+                )
+            else:
+                augmented_dfs = self.run_preaugmentation(
+                    metadata_dfs=metadata_dfs,
+                    balance_dataset=False
+                )
+            
+            # Step 3: Feature Extraction (from pre-augmented images)
+            all_features = self.run_feature_extraction(augmented_dfs)
+            
+            # Generate summary
+            self._generate_pipeline_summary(metadata_dfs, augmented_dfs, all_features)
+            
+            elapsed = time.time() - pipeline_start
+            self.logger.info(f"GPU-OPTIMIZED PIPELINE COMPLETED in {elapsed:.2f} seconds")
+            
+            return all_features
+            
+        except Exception as e:
+            self.logger.error(f"PIPELINE FAILED: {e}")
+            raise
+    
     def _generate_pipeline_summary(self, 
                                  metadata_dfs: Dict[str, pd.DataFrame],
                                  preprocessed_dfs: Dict[str, pd.DataFrame], 
@@ -433,7 +638,7 @@ class SkinVisionPipeline:
             if dataset in preprocessed_dfs:
                 df = preprocessed_dfs[dataset]
                 diagnosis_col = None
-                for col in ['diagnosis', 'dx', 'label']:
+                for col in ['label', 'dx', 'diagnosis']:  # 'label' is what preprocess_batch returns
                     if col in df.columns:
                         diagnosis_col = col
                         break
@@ -487,6 +692,12 @@ def main():
     parser.add_argument("--force-reload", action="store_true",
                        help="Force re-download of data")
     
+    # Add GPU optimization flag
+    parser.add_argument("--gpu-optimized", action="store_true",
+                       help="Use GPU-optimized pipeline with pre-augmentation")
+    parser.add_argument("--target-samples", type=int, default=1000,
+                       help="Target samples per class for balancing")
+    
     args = parser.parse_args()
     
     # Initialize pipeline
@@ -498,13 +709,24 @@ def main():
     
     # Run pipeline
     try:
-        features = pipeline.run_complete_pipeline(
-            datasets=args.datasets,
-            max_images_per_dataset=args.max_images,
-            apply_augmentation=not args.no_augmentation,
-            balance_dataset=not args.no_balancing,
-            force_reload=args.force_reload
-        )
+        if args.gpu_optimized:
+            features = pipeline.run_complete_pipeline_optimized(
+                datasets=args.datasets,
+                max_images_per_dataset=args.max_images,
+                apply_augmentation=not args.no_augmentation,
+                balance_dataset=not args.no_balancing,
+                force_reload=args.force_reload,
+                target_samples_per_class=args.target_samples
+            )
+        else:
+            # Use original pipeline
+            features = pipeline.run_complete_pipeline(
+                datasets=args.datasets,
+                max_images_per_dataset=args.max_images,
+                apply_augmentation=not args.no_augmentation,
+                balance_dataset=not args.no_balancing,
+                force_reload=args.force_reload
+            )
         
         print(f"\nPipeline completed successfully!")
         print(f"Results saved to: {args.output_dir}")
