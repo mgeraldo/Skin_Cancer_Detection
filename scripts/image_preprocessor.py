@@ -54,7 +54,7 @@ class ImagePreprocessor:
     
     def detect_circular_vignette(self, 
                                image: np.ndarray, 
-                               brightness_threshold: float = 0.95,  # Changed back to 0-1 range
+                               brightness_threshold: float = 0.95,
                                display: bool = False) -> Tuple[np.ndarray, int, int]:
         """
         Detect and remove circular vignettes based on radial brightness profile.
