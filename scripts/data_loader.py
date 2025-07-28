@@ -186,9 +186,6 @@ class AzureBlobLoader:
         successful = []
         failed = []
         
-        # For HAM10000, try both part_1 and part_2 if not specified
-        ham_subfolders = ['HAM10000_images_part_1', 'HAM10000_images_part_2'] if dataset == 'ham' and not subfolder else [subfolder]
-        
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_image = {}
             
@@ -200,18 +197,11 @@ class AzureBlobLoader:
                     successful.append(image_id)
                     continue
                 
-                if dataset == 'ham' and not subfolder:
-                    # Try both HAM10000 parts
-                    for sub in ham_subfolders:
-                        url = self.get_image_url(dataset, image_id, sub)
-                        future = executor.submit(self.download_single_image, url, local_path)
-                        future_to_image[future] = (image_id, url)
-                        break  # Only submit one, we'll handle the retry logic in download_single_image
-                else:
-                    url = self.get_image_url(dataset, image_id, subfolder)
-                    future = executor.submit(self.download_single_image, url, local_path)
-                    future_to_image[future] = (image_id, url)
-            
+                # Simple URL generation for ISIC dataset
+                url = self.get_image_url(dataset, image_id, subfolder)
+                future = executor.submit(self.download_single_image, url, local_path)
+                future_to_image[future] = (image_id, url)
+        
             # Process completed downloads
             for future in tqdm(as_completed(future_to_image), total=len(future_to_image), desc="Downloading images"):
                 image_id, url = future_to_image[future]
@@ -225,17 +215,18 @@ class AzureBlobLoader:
                 except Exception as e:
                     failed.append(image_id)
                     self.logger.error(f"Exception downloading {image_id}: {e}")
-        
+    
         self.logger.info(f"Downloaded {len(successful)}/{len(image_list)} images")
         return successful, failed
     
-    def prepare_isic_dataset(self, local_dir: str, max_images: int = None) -> pd.DataFrame:
+    def prepare_isic_dataset(self, local_dir: str, max_images: int = None, batch_size: int = 500) -> pd.DataFrame:
         """
         Download ISIC 2019 dataset with ground truth labels.
         
         Args:
             local_dir: Local directory to save images and metadata
             max_images: Maximum number of images to download (for testing)
+            batch_size: Number of images to download per batch
             
         Returns:
             DataFrame with image paths and labels
@@ -246,8 +237,8 @@ class AzureBlobLoader:
         metadata_df = self.load_metadata('isic', 'training_metadata')
         gt_df = self.load_metadata('isic', 'ground_truth')
         
-        # Merge metadata with ground truth (from your exploratory notebook logic)
-        dx_cols = ['MEL', 'NV', 'BCC', 'AK', 'BKL', 'DF', 'VASC', 'SCC']
+        # Merge metadata with ground truth
+        dx_cols = ['MEL', 'NV', 'BCC', 'AK', 'BKL', 'DF', 'VASC', 'SCC', 'UNK']
         gt_df['dx'] = gt_df[dx_cols].idxmax(axis=1)
         
         merged_df = metadata_df.merge(gt_df[['image', 'dx']], on='image', how='left')
@@ -255,17 +246,36 @@ class AzureBlobLoader:
         if max_images:
             merged_df = merged_df.head(max_images)
         
-        # Download images
+        self.logger.info(f"Will download {len(merged_df)} images")
+        
+        # Download images in batches
         image_dir = os.path.join(local_dir, 'isic_images')
-        successful, failed = self.download_batch(
-            merged_df['image'].tolist(), 
-            'isic', 
-            image_dir,
-            subfolder='training_data'
-        )
+        all_successful = []
+        all_failed = []
+        
+        image_list = merged_df['image'].tolist()
+        total_batches = (len(image_list) + batch_size - 1) // batch_size
+        
+        for i in range(0, len(image_list), batch_size):
+            batch_num = i // batch_size + 1
+            batch = image_list[i:i+batch_size]
+            
+            self.logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} images)")
+            
+            successful, failed = self.download_batch(
+                batch, 
+                'isic', 
+                image_dir,
+                subfolder='training_data'
+            )
+            
+            all_successful.extend(successful)
+            all_failed.extend(failed)
+            
+            self.logger.info(f"Batch {batch_num} complete: {len(successful)} success, {len(failed)} failed")
         
         # Filter to successfully downloaded images
-        final_df = merged_df[merged_df['image'].isin(successful)].copy()
+        final_df = merged_df[merged_df['image'].isin(all_successful)].copy()
         final_df['local_path'] = final_df['image'].apply(lambda x: os.path.join(image_dir, f"{x}.jpg"))
         
         # Save metadata
@@ -273,6 +283,9 @@ class AzureBlobLoader:
         final_df.to_csv(metadata_path, index=False)
         
         self.logger.info(f"ISIC dataset ready: {len(final_df)} images in {local_dir}")
+        if all_failed:
+            self.logger.warning(f"Failed to download {len(all_failed)} images")
+        
         return final_df
 
 
@@ -282,10 +295,11 @@ def main():
     """
     loader = AzureBlobLoader()
     
-    # Test with small batch first
+    # Download full dataset (remove max_images limit)
     isic_df = loader.prepare_isic_dataset(
-        local_dir='./data_local',
-        max_images=10  # Small test batch
+        local_dir='../images/isic',
+        max_images=None  # Set to None to download all images
+        # Removed max_images=10  # This was limiting to only 10 images
     )
     
     print(f"Downloaded {len(isic_df)} ISIC images")
