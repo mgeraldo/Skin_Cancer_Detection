@@ -131,7 +131,11 @@ class SkinVisionPipeline:
             
             try:
                 if dataset == "isic_2019":
-                    # Use the correct method name and parameters
+                    # Call the prepare_isic_dataset method to load the ISIC 2019 dataset.
+                    # Parameters:
+                    # - local_dir: Specifies the directory where raw data is stored.
+                    # - max_images: Limits the number of images loaded for testing purposes.
+                    # - batch_size: Determines the batch size for data loading.
                     df = self.data_loader.prepare_isic_dataset(
                         local_dir=str(self.base_output_dir / "data" / "raw"),
                         max_images=max_images_per_dataset,
