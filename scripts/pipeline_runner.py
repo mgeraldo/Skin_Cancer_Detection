@@ -196,11 +196,13 @@ class SkinVisionPipeline:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 
                 if apply_augmentation and balance_dataset:
+                    self.logger.info("Attempting to balance dataset")
                     # STEP 1: Create balanced strategy (no processing yet)
                     augmentation_strategy, balanced_df = self.image_preprocessor.create_balanced_dataset(
                         metadata_df=df,
                         target_samples_per_class=1000
                     )
+                    self.logger.info("A. Successfully created balanced strategy")
                     
                     # STEP 2: Now actually process the balanced dataset with augmentations
                     preprocessed_df = self.image_preprocessor.preprocess_batch(
@@ -210,7 +212,9 @@ class SkinVisionPipeline:
                         augmentations_per_class=augmentation_strategy,
                         batch_size=self.batch_size
                     )
+                    self.logger.info("B. Successfully processed dataset with augmentations")
                 else:
+                    self.logger.info("Skipping balancing and preprocessing")
                     # Standard preprocessing without balancing
                     augmentations_per_class = None
                     if apply_augmentation:
@@ -225,6 +229,7 @@ class SkinVisionPipeline:
                         augmentations_per_class=augmentations_per_class,
                         batch_size=self.batch_size
                     )
+                    self.logger.info("C. Successfully processed dataset with augmentations")
                 
                 preprocessed_dfs[dataset] = preprocessed_df
                 
@@ -386,10 +391,14 @@ class SkinVisionPipeline:
                             image_name = row['image']
                             
                             # Generate all augmentations for this image
-                            processed_images = self.image_preprocessor.preprocess_single_image(
-                                original_path, 
-                                augmentations=aug_methods
-                            )
+                            try:
+                                processed_images = self.image_preprocessor.preprocess_single_image(
+                                    original_path, 
+                                    augmentations=aug_methods
+                                )
+                            except Exception as e:
+                                self.logger.error(f"Failed to process {image_name}: {e}")
+                                continue
                             
                             # Save each augmented version
                             for processed_img, aug_method in zip(processed_images, aug_methods):
