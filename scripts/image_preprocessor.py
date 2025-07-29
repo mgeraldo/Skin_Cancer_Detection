@@ -243,8 +243,6 @@ class ImagePreprocessor:
             except Exception as e:
                 self.logger.error(f"Failed to remove vignette from {image_path}: {e}")
 
-            return [image]
-        
         # Step 2: Square cropping
         if crop_square:
             try:
@@ -260,7 +258,6 @@ class ImagePreprocessor:
                 image = self.resize_image(image)
             except Exception as e:
                 self.logger.error(f"Failed to resize image {image_path}: {e}")
-            return [image]
         
         # Step 4: Augmentations
         if augmentations is None:
