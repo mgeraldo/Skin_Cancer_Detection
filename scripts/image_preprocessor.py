@@ -250,7 +250,6 @@ class ImagePreprocessor:
             except Exception as e:
                 self.logger.error(f"Failed to crop image {image_path} to square: {e}")
                 self.logger.error(f"Square cropping failed for image {image_path}. Please check the input image and cropping logic.")
-            pass  # Continue to the next step
         
         # Step 3: Resizing
         if resize:
