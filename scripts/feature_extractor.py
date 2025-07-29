@@ -327,7 +327,7 @@ class FeatureExtractor:
                 hist, _ = np.histogram(hsv_pixels[:, i], bins=32, range=(0, 256), density=True)
                 # Avoid log(0) by adding small epsilon
                 hist = hist + 1e-8
-                entropy = -np.sum(hist * np.log2(hist))
+                entropy = -np.sum(hist * (np.log(hist) / np.log(2)))
                 hsv_entropy.append(entropy)
             
             hsv_entropy = np.array(hsv_entropy)
