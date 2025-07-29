@@ -238,15 +238,29 @@ class ImagePreprocessor:
         
         # Step 1: Vignette removal
         if remove_vignette:
-            image, _, _ = self.detect_circular_vignette(image)
+            try:
+                image, _, _ = self.detect_circular_vignette(image)
+            except Exception as e:
+                self.logger.error(f"Failed to remove vignette from {image_path}: {e}")
+
+            return [image]
         
         # Step 2: Square cropping
         if crop_square:
-            image = self.crop_to_square(image)
+            try:
+                image = self.crop_to_square(image)
+            except Exception as e:
+                self.logger.error(f"Failed to crop image {image_path} to square: {e}")
+                self.logger.error(f'')
+            return [image]
         
         # Step 3: Resizing
         if resize:
-            image = self.resize_image(image)
+            try:
+                image = self.resize_image(image)
+            except Exception as e:
+                self.logger.error(f"Failed to resize image {image_path}: {e}")
+            return [image]
         
         # Step 4: Augmentations
         if augmentations is None:
