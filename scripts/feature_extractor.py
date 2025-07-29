@@ -395,7 +395,8 @@ class FeatureExtractor:
                     major, minor = max(axes), min(axes)
                     if major > 0:
                         eccentricity = np.sqrt(1 - (minor / major) ** 2)
-                except:
+                except cv2.error as e:
+                    logging.warning(f"Failed to fit ellipse: {e}")
                     eccentricity = 0
             
             # 3. Convexity = Convex Hull Perimeter / Perimeter
