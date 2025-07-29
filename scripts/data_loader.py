@@ -238,7 +238,7 @@ class AzureBlobLoader:
         gt_df = self.load_metadata('isic', 'ground_truth')
         
         # Merge metadata with ground truth
-        dx_cols = ['MEL', 'NV', 'BCC', 'AK', 'BKL', 'DF', 'VASC', 'SCC', 'UNK']
+        dx_cols = ['MEL', 'NV', 'BCC', 'AK', 'BKL', 'DF', 'VASC', 'SCC']
         gt_df['dx'] = gt_df[dx_cols].idxmax(axis=1)
         
         merged_df = metadata_df.merge(gt_df[['image', 'dx']], on='image', how='left')
