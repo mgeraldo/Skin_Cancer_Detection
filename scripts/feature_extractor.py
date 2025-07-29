@@ -256,7 +256,8 @@ class FeatureExtractor:
         """
         try:
             gray = rgb2gray(image)
-            gray = (gray * 255).astype(np.uint8)  # Convert to uint8
+            if gray.dtype != np.uint8:  # Check if scaling is necessary
+                gray = (gray * 255).astype(np.uint8)  # Convert to uint8
             laplace = np.abs(cv2.Laplacian(gray, cv2.CV_64F))
             
             # Handle case where all values are zero
