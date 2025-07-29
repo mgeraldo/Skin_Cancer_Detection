@@ -225,7 +225,7 @@ import torch
 from notebooks.model_training import VGG16SkinLesionClassifier
 
 # Load model
-model = VGG16SkinLesionClassifier(num_classes=9)
+model = VGG16SkinLesionClassifier(num_classes=8)
 checkpoint = torch.load('models/vgg16_skinlesion_best_model.pth')
 model.load_state_dict(checkpoint['model_state_dict'])
 
