@@ -386,7 +386,7 @@ Infrastructure includes:
 | Component | Configuration | Purpose |
 |-----------|--------------|---------|
 | **VGG16 Backbone** | Pre-trained, frozen | Feature extraction |
-| **Custom Classifier** | 4096→2048→1024→512→9 | Medical classification |
+| **Custom Classifier** | 4096→2048→1024→512→8 | Medical classification |
 | **Dropout Layers** | 0.5 rate | Regularization |
 | **Class Weights** | Balanced | Handle data imbalance |
 | **Early Stopping** | Patience=10 | Prevent overfitting |
