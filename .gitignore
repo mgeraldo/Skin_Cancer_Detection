@@ -17,3 +17,6 @@ data/ISIC_2019_Training_Metadata.csv
 data/ISIC_2019_Training_GroundTruth.csv
 models/vgg16_skinlesion_best_model.pth
 models/vgg16_skinlesion_inference_20250728_142515.pth
+pipeline_output/
+.data
+.datasets
