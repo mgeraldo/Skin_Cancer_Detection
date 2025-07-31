@@ -36,7 +36,11 @@ from skimage.feature import (
     graycoprops,
     hog
 )
+
 import pywt
+import torch
+import torchvision.transforms as T
+from model_inference import EfficientNetB3SkinLesionClassifier, load_pretrained_model
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
@@ -68,7 +72,41 @@ class FeatureExtractor:
         self.glcm_props = ['contrast', 'dissimilarity', 'homogeneity', 'energy', 'correlation', 'ASM']
         
         # Feature types we extract - added new feature types
-        self.feature_types = ['hog', 'lbp', 'color', 'glcm', 'wavelet', 'laplace', 'hsv_color', 'circularity', 'contrast']
+        # Feature types we extract - added EfficientNet
+        self.feature_types = ['hog', 'lbp', 'color', 'glcm', 'wavelet', 'laplace', 'hsv_color', 'circularity', 'contrast', 'efficientnet']
+    def extract_efficientnet_features(self, image: np.ndarray, model: Optional[torch.nn.Module] = None, device: str = 'cpu') -> np.ndarray:
+        """
+        Extract EfficientNet deep features from an image using a pretrained model.
+        Args:
+            image: Input image as numpy array (RGB, float32 [0,1])
+            model: Pretrained EfficientNet model (if None, loads default)
+            device: 'cpu' or 'cuda'
+        Returns:
+            Deep feature vector (numpy array)
+        """
+        try:
+            import torchvision.transforms as T
+            # Prepare image for EfficientNet
+            transform = T.Compose([
+                T.ToPILImage(),
+                T.Resize((300, 300)),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+            img_tensor = transform((image * 255).astype(np.uint8)).unsqueeze(0)
+            img_tensor = img_tensor.to(device)
+            if model is None:
+                model = load_pretrained_model(device=device)
+            model.eval()
+            with torch.no_grad():
+                features = model.extract_features(img_tensor)
+                features = torch.flatten(features, 1)
+                features_np = features.cpu().numpy().squeeze()
+            return features_np
+        except Exception as e:
+            self.logger.error(f"Error extracting EfficientNet features: {e}")
+            # Return zeros of expected size (1536 for B3)
+            return np.zeros(1536)
     
     def load_image(self, image_path: str, size: Optional[Tuple[int, int]] = None) -> np.ndarray:
         """Load and prepare image for feature extraction."""
@@ -484,20 +522,17 @@ class FeatureExtractor:
             self.logger.error(f"Error extracting contrast features: {e}")
             return np.zeros(4)
     
-    def extract_all_features_single(self, image_path: str) -> Dict[str, np.ndarray]:
+    def extract_all_features_single(self, image_path: str, efficientnet_model: Optional[torch.nn.Module] = None, device: str = 'cpu') -> Dict[str, np.ndarray]:
         """
-        Extract all feature types from a single image.
-        
+        Extract all feature types from a single image, including EfficientNet.
         Args:
             image_path: Path to image file
-            
+            efficientnet_model: Pretrained EfficientNet model (optional)
+            device: 'cpu' or 'cuda'
         Returns:
             Dictionary with feature type as key and feature vector as value
         """
-        # Load image
         image = self.load_image(image_path)
-        
-        # Extract all feature types - including new ones
         features = {
             'hog': self.extract_hog_features(image),
             'lbp': self.extract_lbp_features(image),
@@ -507,9 +542,9 @@ class FeatureExtractor:
             'laplace': self.extract_laplace_features(image),
             'hsv_color': self.extract_hsv_color_features(image),
             'circularity': self.extract_circularity_features(image),
-            'contrast': self.extract_contrast_features(image)
+            'contrast': self.extract_contrast_features(image),
+            'efficientnet': self.extract_efficientnet_features(image, model=efficientnet_model, device=device)
         }
-        
         return features
     
     def extract_features_batch(self, 
@@ -725,7 +760,8 @@ class FeatureExtractor:
             'laplace': 32,  # Fixed at 32 bins
             'hsv_color': 9,  # hsv_mean (3) + hsv_std (3) + hsv_entropy (3)
             'circularity': 3,  # circularity + eccentricity + convexity
-            'contrast': 4  # contrast_hsv (3) + euclidean distance (1)
+            'contrast': 4,  # contrast_hsv (3) + euclidean distance (1)
+            'efficientnet': 1536
         }
 
     def get_zero_features(self, feature_type: str, image_shape: Tuple[int, int] = None) -> np.ndarray:
@@ -753,16 +789,17 @@ def main():
     Example usage of the FeatureExtractor
     """
     # Initialize feature extractor
+    # Initialize feature extractor
     extractor = FeatureExtractor(target_size=(450, 450))
-    
+    # Load EfficientNet model once for batch
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    efficientnet_model = load_pretrained_model(device=device)
     # Example: Load preprocessed metadata
     metadata_path = '../images/processed/preprocessed_metadata.csv'
     if os.path.exists(metadata_path):
         metadata_df = pd.read_csv(metadata_path)
-        
         # Get image paths (use first 100 for testing)
         image_paths = metadata_df['local_path'].tolist()[:100]
-        
         # Extract features in batches
         features = extractor.extract_features_batch(
             image_paths=image_paths,
@@ -770,13 +807,10 @@ def main():
             output_dir='../features/batches',
             batch_size=20  # Smaller batches for testing
         )
-        
         # Analyze features
         analysis = extractor.get_feature_analysis(features)
-        
         # Plot analysis
         extractor.plot_feature_analysis(analysis)
-        
         # Print summary
         for ft, feature_array in features.items():
             if len(feature_array) > 0:
