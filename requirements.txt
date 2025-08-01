@@ -44,8 +44,8 @@ notebook>=6.5.0
 # ================================
 # Most packages come pre-installed in Google Colab.
 # You may only need to install:
-!pip install PyWavelets
-!pip install opencv-python  # if not available
+# !pip install PyWavelets
+# !pip install opencv-python  # if not available
 
 # ================================
 # USAGE EXAMPLES
