@@ -73,7 +73,8 @@ class FeatureExtractor:
         
         # Feature types we extract - added new feature types
         # Feature types we extract - added EfficientNet
-        self.feature_types = ['hog', 'lbp', 'color', 'glcm', 'wavelet', 'laplace', 'hsv_color', 'circularity', 'contrast', 'efficientnet']
+        # Feature types we extract - EfficientNet features are optional and not included by default
+        self.feature_types = ['hog', 'lbp', 'color', 'glcm', 'wavelet', 'laplace', 'hsv_color', 'circularity', 'contrast']
     def extract_efficientnet_features(self, image: np.ndarray, model: Optional[torch.nn.Module] = None, device: str = 'cpu') -> np.ndarray:
         """
         Extract EfficientNet deep features from an image using a pretrained model.
