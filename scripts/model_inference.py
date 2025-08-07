@@ -69,7 +69,7 @@ def load_pretrained_model(checkpoint_path=None, device='cpu', num_classes=8):
     Returns:
         model: Loaded EfficientNet model
     """
-    if checkpoint_path and checkpoint_path.exists():
+    if checkpoint_path and os.path.exists(checkpoint_path):
         # Load from checkpoint
         print(f"Loading model from checkpoint: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=device)
