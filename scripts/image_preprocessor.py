@@ -70,51 +70,75 @@ class ImagePreprocessor:
         Returns:
             Tuple of (cropped_image, new_width, new_height)
         """
-        # Convert to grayscale for analysis
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        
-        # Get image dimensions and center
-        h, w = gray.shape
-        center = (w / 2.0, h / 2.0)  # Float coordinates for cv2.getRectSubPix
-        
-        # Compute distance from center for each pixel
-        Y, X = np.indices((h, w))
-        distance = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
-        
-        # Build radial brightness profile
-        max_distance = np.max(distance)
-        num_bins = 100
-        radial_means = np.zeros(num_bins)
-        bin_edges = np.linspace(0, max_distance, num_bins + 1)
-        
-        for i in range(num_bins):
-            mask = (distance >= bin_edges[i]) & (distance < bin_edges[i+1])
-            if np.any(mask):
-                radial_means[i] = np.mean(gray[mask])
-        
-        # Normalize the radial brightness profile by dividing each value by the maximum value.
-        # This scales the profile to the range [0, 1], making it easier to compare against the threshold.
-        if np.max(radial_means) > 0:
-            radial_means = radial_means / np.max(radial_means)  # Normalize to 0-1 based on actual max
+        try:
+            # Input validation
+            if image is None:
+                raise ValueError("Input image is None")
+            
+            if len(image.shape) < 2:
+                raise ValueError(f"Invalid image shape: {image.shape}")
+            
+            # Convert to grayscale for analysis
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            
+            # Get image dimensions and center
+            h, w = gray.shape
+            center = (w / 2.0, h / 2.0)  # Float coordinates for cv2.getRectSubPix
+            
+            # Compute distance from center for each pixel
+            Y, X = np.indices((h, w))
+            distance = np.sqrt((X - center[0])**2 + (Y - center[1])**2)
+            
+            # Build radial brightness profile
+            max_distance = np.max(distance)
+            num_bins = 100
+            radial_means = np.zeros(num_bins)
+            bin_edges = np.linspace(0, max_distance, num_bins + 1)
+            
+            for i in range(num_bins):
+                mask = (distance >= bin_edges[i]) & (distance < bin_edges[i+1])
+                if np.any(mask):
+                    radial_means[i] = np.mean(gray[mask])
+            
+            # Normalize the radial brightness profile by dividing each value by the maximum value.
+            # This scales the profile to the range [0, 1], making it easier to compare against the threshold.
+            if np.max(radial_means) > 0:
+                radial_means = radial_means / np.max(radial_means)  # Normalize to 0-1 based on actual max
 
-        # Detect where brightness drops below threshold
-        valid_bins = np.where(radial_means > brightness_threshold)[0]
-        
-        # Handle different cases
-        if len(valid_bins) == 100 or len(valid_bins) == 0 or valid_bins[-1] == 99:
-            # No vignette detected or edge case - return original
-            cropped_img, h2, w2 = image, h, w
-        else:
-            # Vignette detected - crop to inscribed square
-            valid_radius = bin_edges[valid_bins[-1]]
-            side_length = int(valid_radius * np.sqrt(2))
-            h2, w2 = side_length, side_length
-            cropped_img = cv2.getRectSubPix(image, (w2, h2), center)
-        
-        if display:
-            self._display_vignette_debug(image, radial_means, cropped_img, brightness_threshold)
-        
-        return cropped_img, w2, h2
+            # Detect where brightness drops below threshold
+            valid_bins = np.where(radial_means > brightness_threshold)[0]
+            
+            # Handle different cases
+            if len(valid_bins) == 100 or len(valid_bins) == 0 or valid_bins[-1] == 99:
+                # No vignette detected or edge case - return original
+                cropped_img, h2, w2 = image, h, w
+            else:
+                # Vignette detected - crop to inscribed square
+                valid_radius = bin_edges[valid_bins[-1]]
+                side_length = int(valid_radius * np.sqrt(2))
+                h2, w2 = side_length, side_length
+                
+                # Ensure side_length is reasonable
+                if side_length <= 0 or side_length > min(h, w):
+                    # Fallback to original image
+                    cropped_img, h2, w2 = image, h, w
+                else:
+                    cropped_img = cv2.getRectSubPix(image, (w2, h2), center)
+            
+            if display:
+                self._display_vignette_debug(image, radial_means, cropped_img, brightness_threshold)
+            
+            # Final validation
+            if cropped_img is None:
+                return image, h, w
+                
+            return cropped_img, w2, h2
+            
+        except Exception as e:
+            # If anything goes wrong, return the original image
+            self.logger.warning(f"Vignette detection failed, using original image: {e}")
+            h, w = image.shape[:2]
+            return image, w, h
     
     def _display_vignette_debug(self, 
                               original: np.ndarray, 
@@ -151,13 +175,34 @@ class ImagePreprocessor:
         Returns:
             Square-cropped image
         """
-        height, width = image.shape[:2]
-        min_dim = min(height, width)
-        start_x = (width - min_dim) // 2
-        start_y = (height - min_dim) // 2
-        
-        cropped_img = image[start_y:start_y + min_dim, start_x:start_x + min_dim]
-        return cropped_img
+        try:
+            # Input validation
+            if image is None:
+                raise ValueError("Input image is None")
+            
+            if len(image.shape) < 2:
+                raise ValueError(f"Invalid image shape: {image.shape}")
+            
+            height, width = image.shape[:2]
+            
+            if height <= 0 or width <= 0:
+                raise ValueError(f"Invalid image dimensions: {height}x{width}")
+            
+            min_dim = min(height, width)
+            start_x = (width - min_dim) // 2
+            start_y = (height - min_dim) // 2
+            
+            cropped_img = image[start_y:start_y + min_dim, start_x:start_x + min_dim]
+            
+            # Validate the result
+            if cropped_img is None or cropped_img.size == 0:
+                raise ValueError("Cropping resulted in empty image")
+            
+            return cropped_img
+            
+        except Exception as e:
+            self.logger.warning(f"Crop to square failed: {e}, returning original image")
+            return image
     
     def resize_image(self, image: np.ndarray, target_size: Optional[Tuple[int, int]] = None) -> np.ndarray:
         """
@@ -170,11 +215,34 @@ class ImagePreprocessor:
         Returns:
             Resized image
         """
-        if target_size is None:
-            target_size = self.target_size
+        try:
+            # Input validation
+            if image is None:
+                raise ValueError("Input image is None")
             
-        resized_img = cv2.resize(image, target_size, interpolation=cv2.INTER_AREA)
-        return resized_img
+            if len(image.shape) < 2:
+                raise ValueError(f"Invalid image shape: {image.shape}")
+            
+            if target_size is None:
+                target_size = self.target_size
+                
+            if not target_size or len(target_size) != 2:
+                raise ValueError(f"Invalid target size: {target_size}")
+                
+            if target_size[0] <= 0 or target_size[1] <= 0:
+                raise ValueError(f"Invalid target dimensions: {target_size}")
+            
+            resized_img = cv2.resize(image, target_size, interpolation=cv2.INTER_AREA)
+            
+            # Validate the result
+            if resized_img is None or resized_img.size == 0:
+                raise ValueError("Resizing resulted in empty image")
+            
+            return resized_img
+            
+        except Exception as e:
+            self.logger.warning(f"Resize failed: {e}, returning original image")
+            return image
     
     def apply_augmentations(self, 
                           image: np.ndarray, 
@@ -238,16 +306,57 @@ class ImagePreprocessor:
         
         # Step 1: Vignette removal
         if remove_vignette:
-            image, _, _ = self.detect_circular_vignette(image)
-        
+            try:
+                vignette_result = self.detect_circular_vignette(image)
+                if vignette_result is not None and len(vignette_result) == 3:
+                    image, _, _ = vignette_result
+                    if image is None:
+                        self.logger.warning(f"Vignette detection returned None for {image_path}, using original image")
+                else:
+                    self.logger.warning(f"Vignette detection failed for {image_path}, using original image")
+            except Exception as e:
+                self.logger.error(f"Failed to remove vignette from {image_path}: {e}")
+                # Continue with original image
+
+        # Verify image is still valid after vignette processing
+        if image is None:
+            self.logger.error(f"Image became None after vignette processing for {image_path}")
+            raise ValueError(f"Image processing failed for {image_path}")
+
         # Step 2: Square cropping
         if crop_square:
-            image = self.crop_to_square(image)
+            try:
+                cropped_image = self.crop_to_square(image)
+                if cropped_image is not None:
+                    image = cropped_image
+                else:
+                    self.logger.warning(f"Square cropping returned None for {image_path}, using original image")
+            except Exception as e:
+                self.logger.error(f"Failed to crop image {image_path} to square: {e}")
+                # Continue with uncropped image
         
+        # Verify image is still valid after cropping
+        if image is None:
+            self.logger.error(f"Image became None after cropping for {image_path}")
+            raise ValueError(f"Image processing failed for {image_path}")
+
         # Step 3: Resizing
         if resize:
-            image = self.resize_image(image)
+            try:
+                resized_image = self.resize_image(image)
+                if resized_image is not None:
+                    image = resized_image
+                else:
+                    self.logger.warning(f"Resizing returned None for {image_path}, using original image")
+            except Exception as e:
+                self.logger.error(f"Failed to resize image {image_path}: {e}")
+                # Continue with unresized image
         
+        # Final verification
+        if image is None:
+            self.logger.error(f"Final image is None for {image_path}")
+            raise ValueError(f"Image processing completely failed for {image_path}")
+
         # Step 4: Augmentations
         if augmentations is None:
             return [image]
@@ -259,7 +368,8 @@ class ImagePreprocessor:
                         output_dir: str,
                         metadata_df: pd.DataFrame,
                         augmentations_per_class: Optional[Dict[str, List[str]]] = None,
-                        batch_size: int = 50) -> pd.DataFrame:
+                        batch_size: int = 50,
+                        target_samples_per_class: int = 1000) -> pd.DataFrame:
         """
         Process a batch of images with class-specific augmentation.
         
@@ -269,6 +379,7 @@ class ImagePreprocessor:
             metadata_df: DataFrame with image metadata and labels
             augmentations_per_class: Dict mapping class names to augmentation lists
             batch_size: Number of images to process at once
+            target_samples_per_class: Target number of samples per class after processing
             
         Returns:
             DataFrame with processed image information
@@ -350,6 +461,35 @@ class ImagePreprocessor:
         # Create output DataFrame
         result_df = pd.DataFrame(processed_data)
         
+        # Post-processing: Ensure exactly target_samples_per_class for each class
+        if augmentations_per_class and len(result_df) > 0:
+            balanced_result_data = []
+            
+            self.logger.info(f"Post-processing: Ensuring exactly {target_samples_per_class} samples per class")
+            
+            for label in result_df['label'].unique():
+                class_data = result_df[result_df['label'] == label]
+                current_count = len(class_data)
+                
+                if current_count > target_samples_per_class:
+                    # Downsample to exactly target_count
+                    sampled_data = class_data.sample(n=target_samples_per_class, random_state=42)
+                    balanced_result_data.append(sampled_data)
+                    self.logger.info(f"Post-processing: {label} downsampled from {current_count} to {target_samples_per_class}")
+                elif current_count == target_samples_per_class:
+                    balanced_result_data.append(class_data)
+                    self.logger.info(f"Post-processing: {label} already has {current_count} samples (target: {target_samples_per_class})")
+                else:
+                    # If we have fewer than target, still include all but log the issue
+                    balanced_result_data.append(class_data)
+                    self.logger.warning(f"Post-processing: {label} has only {current_count} samples (target: {target_samples_per_class})")
+            
+            result_df = pd.concat(balanced_result_data, ignore_index=True)
+            
+            # Final verification log
+            final_counts = result_df['label'].value_counts()
+            self.logger.info(f"Final class distribution after post-processing:\n{final_counts}")
+        
         # Save metadata
         metadata_path = os.path.join(output_dir, 'preprocessed_metadata.csv')
         result_df.to_csv(metadata_path, index=False)
@@ -377,23 +517,46 @@ class ImagePreprocessor:
             class_data = metadata_df[metadata_df['dx'] == class_name]
             
             if current_count >= target_samples_per_class:
-                # Downsample - randomly select target number
+                # Downsample - randomly select exactly target number
                 sampled_data = class_data.sample(n=target_samples_per_class, random_state=42)
                 augmentation_strategy[class_name] = ['rot0']
                 balanced_data.append(sampled_data)
+                self.logger.info(f"Class {class_name}: {current_count} -> {target_samples_per_class} (downsampled, no augmentation)")
                 
             else:
-                # Upsample - determine needed augmentations
-                total_needed = target_samples_per_class
-                augs_needed = math.ceil(total_needed / current_count)  # Total augmentations per image
+                # Upsample using augmentation strategy
+                # Strategy: Use all available images and calculate optimal augmentation
+                
+                # Calculate how many augmentations per image to reach target
+                augs_per_image = math.ceil(target_samples_per_class / current_count)
+                
+                # Ensure we don't exceed available augmentation methods
+                max_augs = min(augs_per_image, len(self.augmentation_methods))
                 
                 # Select augmentation methods
-                selected_augs = self.augmentation_methods[:min(augs_needed, len(self.augmentation_methods))]
-                augmentation_strategy[class_name] = selected_augs
-                balanced_data.append(class_data)  # Use all available data
+                selected_augs = self.augmentation_methods[:max_augs]
                 
-                self.logger.info(f"Class {class_name}: {current_count} -> {target_samples_per_class} "
-                               f"using {selected_augs}")
+                # Calculate how many images we need to select to get close to target
+                # We want: num_selected_images * len(selected_augs) >= target_samples_per_class
+                if len(selected_augs) > 0:
+                    images_needed = math.ceil(target_samples_per_class / len(selected_augs))
+                    images_needed = min(images_needed, current_count)  # Can't use more than we have
+                else:
+                    images_needed = current_count
+                    selected_augs = ['rot0']
+                
+                # Sample the calculated number of images
+                if images_needed < current_count:
+                    sampled_data = class_data.sample(n=images_needed, random_state=42)
+                else:
+                    sampled_data = class_data  # Use all available
+                
+                augmentation_strategy[class_name] = selected_augs
+                balanced_data.append(sampled_data)
+                
+                expected_final_count = len(sampled_data) * len(selected_augs)
+                self.logger.info(f"Class {class_name}: {current_count} -> expected {expected_final_count} "
+                               f"(using {len(sampled_data)} images × {len(selected_augs)} augs)")
         
         balanced_metadata_df = pd.concat(balanced_data, ignore_index=True)
         return augmentation_strategy, balanced_metadata_df

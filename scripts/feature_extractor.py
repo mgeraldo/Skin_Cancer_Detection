@@ -8,9 +8,12 @@ This module handles feature extraction from preprocessed images including:
 - GLCM (Gray-Level Co-occurrence Matrix)
 - Wavelet features
 - Laplace features
+- HSV Color features (mean, std, entropy)
+- Circularity features (circularity, eccentricity, convexity)
+- Contrast features (lesion vs surrounding skin)
 - GPU-optimized batch processing
 
-Combines logic from revised_feature_engineering.ipynb
+Combines logic from revised_feature_engineering.ipynb and extract_color_and_circularity_features.ipynb
 """
 
 import os
@@ -33,7 +36,11 @@ from skimage.feature import (
     graycoprops,
     hog
 )
+
 import pywt
+import torch
+import torchvision.transforms as T
+from model_inference import EfficientNetB3SkinLesionClassifier, load_pretrained_model
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
@@ -64,8 +71,43 @@ class FeatureExtractor:
         self.glcm_angles = [0, np.pi/4, np.pi/2, 3*np.pi/4]
         self.glcm_props = ['contrast', 'dissimilarity', 'homogeneity', 'energy', 'correlation', 'ASM']
         
-        # Feature types we extract
-        self.feature_types = ['hog', 'lbp', 'color', 'glcm', 'wavelet', 'laplace']
+        # Feature types we extract - added new feature types
+        # Feature types we extract - added EfficientNet
+        # Feature types we extract - EfficientNet features are optional and not included by default
+        self.feature_types = ['hog', 'lbp', 'color', 'glcm', 'wavelet', 'laplace', 'hsv_color', 'circularity', 'contrast']
+    def extract_efficientnet_features(self, image: np.ndarray, model: Optional[torch.nn.Module] = None, device: str = 'cpu') -> np.ndarray:
+        """
+        Extract EfficientNet deep features from an image using a pretrained model.
+        Args:
+            image: Input image as numpy array (RGB, float32 [0,1])
+            model: Pretrained EfficientNet model (if None, loads default)
+            device: 'cpu' or 'cuda'
+        Returns:
+            Deep feature vector (numpy array)
+        """
+        try:
+            import torchvision.transforms as T
+            # Prepare image for EfficientNet
+            transform = T.Compose([
+                T.ToPILImage(),
+                T.Resize((300, 300)),
+                T.ToTensor(),
+                T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+            img_tensor = transform((image * 255).astype(np.uint8)).unsqueeze(0)
+            img_tensor = img_tensor.to(device)
+            if model is None:
+                model = load_pretrained_model(device=device)
+            model.eval()
+            with torch.no_grad():
+                features = model.extract_features(img_tensor)
+                features = torch.flatten(features, 1)
+                features_np = features.cpu().numpy().squeeze()
+            return features_np
+        except Exception as e:
+            self.logger.error(f"Error extracting EfficientNet features: {e}")
+            # Return zeros of expected size (1536 for B3)
+            return np.zeros(1536)
     
     def load_image(self, image_path: str, size: Optional[Tuple[int, int]] = None) -> np.ndarray:
         """Load and prepare image for feature extraction."""
@@ -253,6 +295,8 @@ class FeatureExtractor:
         """
         try:
             gray = rgb2gray(image)
+            if gray.dtype != np.uint8:  # Check if scaling is necessary
+                gray = (gray * 255).astype(np.uint8)  # Convert to uint8
             laplace = np.abs(cv2.Laplacian(gray, cv2.CV_64F))
             
             # Handle case where all values are zero
@@ -267,29 +311,241 @@ class FeatureExtractor:
             self.logger.error(f"Error extracting Laplace features: {e}")
             return np.zeros(bins)
     
-    def extract_all_features_single(self, image_path: str) -> Dict[str, np.ndarray]:
+    def extract_hsv_color_features(self, image: np.ndarray) -> np.ndarray:
         """
-        Extract all feature types from a single image.
+        Extract HSV color features from lesion area using Otsu thresholding.
+        From extract_color_and_circularity_features.ipynb Step 2.
         
         Args:
-            image_path: Path to image file
+            image: Input image as numpy array
             
+        Returns:
+            HSV feature vector: [hsv_mean (3), hsv_std (3), hsv_entropy (3)] = 9 features
+        """
+        try:
+            # Convert to OpenCV format (BGR) and then to HSV
+            if image.dtype != np.uint8:
+                image_uint8 = (image * 255).astype(np.uint8)
+            else:
+                image_uint8 = image
+            
+            img_hsv = cv2.cvtColor(image_uint8, cv2.COLOR_RGB2HSV)
+            
+            # Step 1: Perform segmentation using Otsu thresholding
+            gray = cv2.cvtColor(image_uint8, cv2.COLOR_RGB2GRAY)
+            blur = cv2.GaussianBlur(gray, (7, 7), 0)
+            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # Invert if background is white
+            if np.sum(thresh == 255) > np.sum(thresh == 0):
+                thresh = cv2.bitwise_not(thresh)
+            
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if len(contours) == 0:
+                return np.zeros(9)  # Return zeros if no contours found
+            
+            # Find the largest contour (assuming it's the lesion)
+            largest_contour = max(contours, key=cv2.contourArea)
+            
+            mask = np.zeros_like(gray)
+            cv2.drawContours(mask, [largest_contour], -1, 255, -1)
+            
+            # Step 2: Calculate HSV Features
+            hsv_pixels = img_hsv[mask == 255]
+            
+            if len(hsv_pixels) == 0:
+                return np.zeros(9)
+            
+            hsv_mean = np.mean(hsv_pixels, axis=0)
+            hsv_std = np.std(hsv_pixels, axis=0)
+            
+            # Calculate entropy for each HSV channel
+            hsv_entropy = []
+            for i in range(3):
+                hist, _ = np.histogram(hsv_pixels[:, i], bins=32, range=(0, 256), density=True)
+                # Avoid log(0) by adding small epsilon
+                hist = hist + 1e-8
+                entropy = -np.sum(hist * (np.log(hist) / np.log(2)))
+                hsv_entropy.append(entropy)
+            
+            hsv_entropy = np.array(hsv_entropy)
+            
+            # Combine all features: mean (3) + std (3) + entropy (3) = 9 features
+            features = np.concatenate([hsv_mean, hsv_std, hsv_entropy])
+            
+            return features
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting HSV color features: {e}")
+            return np.zeros(9)
+    
+    def extract_circularity_features(self, image: np.ndarray) -> np.ndarray:
+        """
+        Extract circularity features from lesion area.
+        From extract_color_and_circularity_features.ipynb Step 3.
+        
+        Args:
+            image: Input image as numpy array
+            
+        Returns:
+            Circularity feature vector: [circularity, eccentricity, convexity] = 3 features
+        """
+        try:
+            # Convert to OpenCV format
+            if image.dtype != np.uint8:
+                image_uint8 = (image * 255).astype(np.uint8)
+            else:
+                image_uint8 = image
+            
+            # Perform segmentation using Otsu thresholding
+            gray = cv2.cvtColor(image_uint8, cv2.COLOR_RGB2GRAY)
+            blur = cv2.GaussianBlur(gray, (7, 7), 0)
+            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # Invert if background is white
+            if np.sum(thresh == 255) > np.sum(thresh == 0):
+                thresh = cv2.bitwise_not(thresh)
+            
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if len(contours) == 0:
+                return np.zeros(3)
+            
+            # Find the largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+            
+            # Step 3: Calculate circularity features
+            area = cv2.contourArea(largest_contour)
+            perimeter = cv2.arcLength(largest_contour, True)
+            
+            if perimeter == 0:
+                return np.zeros(3)
+            
+            # 1. Circularity = 4 * pi * area / perimeter^2
+            circularity = (4 * np.pi * area) / (perimeter ** 2)
+            
+            # 2. Eccentricity from fitted ellipse
+            eccentricity = 0
+            if len(largest_contour) >= 5:
+                try:
+                    ellipse = cv2.fitEllipse(largest_contour)
+                    (center, axes, angle) = ellipse
+                    major, minor = max(axes), min(axes)
+                    if major > 0:
+                        eccentricity = np.sqrt(1 - (minor / major) ** 2)
+                except cv2.error as e:
+                    logging.warning(f"Failed to fit ellipse: {e}")
+                    eccentricity = 0
+            
+            # 3. Convexity = Convex Hull Perimeter / Perimeter
+            convex_hull = cv2.convexHull(largest_contour)
+            convex_perimeter = cv2.arcLength(convex_hull, True)
+            convexity = convex_perimeter / perimeter if perimeter > 0 else 0
+            
+            features = np.array([circularity, eccentricity, convexity])
+            
+            return features
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting circularity features: {e}")
+            return np.zeros(3)
+    
+    def extract_contrast_features(self, image: np.ndarray) -> np.ndarray:
+        """
+        Extract contrast features between lesion and surrounding skin.
+        From extract_color_and_circularity_features.ipynb Step 4.
+        
+        Args:
+            image: Input image as numpy array
+            
+        Returns:
+            Contrast feature vector: [contrast_hsv (3), contrast_hsv_euclidean (1)] = 4 features
+        """
+        try:
+            # Convert to OpenCV format
+            if image.dtype != np.uint8:
+                image_uint8 = (image * 255).astype(np.uint8)
+            else:
+                image_uint8 = image
+            
+            img_hsv = cv2.cvtColor(image_uint8, cv2.COLOR_RGB2HSV)
+            
+            # Perform segmentation using Otsu thresholding
+            gray = cv2.cvtColor(image_uint8, cv2.COLOR_RGB2GRAY)
+            blur = cv2.GaussianBlur(gray, (7, 7), 0)
+            _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # Invert if background is white
+            if np.sum(thresh == 255) > np.sum(thresh == 0):
+                thresh = cv2.bitwise_not(thresh)
+            
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if len(contours) == 0:
+                return np.zeros(4)
+            
+            # Find the largest contour
+            largest_contour = max(contours, key=cv2.contourArea)
+            
+            mask = np.zeros_like(gray)
+            cv2.drawContours(mask, [largest_contour], -1, 255, -1)
+            
+            # Get lesion HSV values
+            hsv_pixels = img_hsv[mask == 255]
+            if len(hsv_pixels) == 0:
+                return np.zeros(4)
+            
+            hsv_mean = np.mean(hsv_pixels, axis=0)
+            
+            # Step 4: Calculate contrast features
+            # Create dilated mask to find surrounding skin
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+            dilated_mask = cv2.dilate(mask, kernel, iterations=1)
+            surrounding_mask = cv2.bitwise_and(dilated_mask, cv2.bitwise_not(mask))
+            
+            surrounding_hsv = img_hsv[surrounding_mask == 255]
+            
+            if len(surrounding_hsv) > 0:
+                surrounding_hsv_mean = np.mean(surrounding_hsv, axis=0)
+                contrast_hsv = np.abs(hsv_mean - surrounding_hsv_mean)
+                contrast_hsv_euclidean = np.linalg.norm(contrast_hsv)
+            else:
+                contrast_hsv = np.array([0, 0, 0])
+                contrast_hsv_euclidean = 0
+            
+            # Combine features: contrast_hsv (3) + euclidean distance (1) = 4 features
+            features = np.concatenate([contrast_hsv, [contrast_hsv_euclidean]])
+            
+            return features
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting contrast features: {e}")
+            return np.zeros(4)
+    
+    def extract_all_features_single(self, image_path: str, efficientnet_model: Optional[torch.nn.Module] = None, device: str = 'cpu') -> Dict[str, np.ndarray]:
+        """
+        Extract all feature types from a single image, including EfficientNet.
+        Args:
+            image_path: Path to image file
+            efficientnet_model: Pretrained EfficientNet model (optional)
+            device: 'cpu' or 'cuda'
         Returns:
             Dictionary with feature type as key and feature vector as value
         """
-        # Load image
         image = self.load_image(image_path)
-        
-        # Extract all feature types
         features = {
             'hog': self.extract_hog_features(image),
             'lbp': self.extract_lbp_features(image),
             'color': self.extract_color_histogram(image),
             'glcm': self.extract_glcm_features(image),
             'wavelet': self.extract_wavelet_features(image),
-            'laplace': self.extract_laplace_features(image)
+            'laplace': self.extract_laplace_features(image),
+            'hsv_color': self.extract_hsv_color_features(image),
+            'circularity': self.extract_circularity_features(image),
+            'contrast': self.extract_contrast_features(image),
+            'efficientnet': self.extract_efficientnet_features(image, model=efficientnet_model, device=device)
         }
-        
         return features
     
     def extract_features_batch(self, 
@@ -502,7 +758,11 @@ class FeatureExtractor:
             'color': 32 * 3,  # 32 bins × 3 HSV channels = 96
             'glcm': len(self.glcm_props) * len(self.glcm_distances) * len(self.glcm_angles),  # 6×3×4 = 72
             'wavelet': 1000,  # Fixed at 1000
-            'laplace': 32  # Fixed at 32 bins
+            'laplace': 32,  # Fixed at 32 bins
+            'hsv_color': 9,  # hsv_mean (3) + hsv_std (3) + hsv_entropy (3)
+            'circularity': 3,  # circularity + eccentricity + convexity
+            'contrast': 4,  # contrast_hsv (3) + euclidean distance (1)
+            'efficientnet': 1536
         }
 
     def get_zero_features(self, feature_type: str, image_shape: Tuple[int, int] = None) -> np.ndarray:
@@ -530,16 +790,17 @@ def main():
     Example usage of the FeatureExtractor
     """
     # Initialize feature extractor
+    # Initialize feature extractor
     extractor = FeatureExtractor(target_size=(450, 450))
-    
+    # Load EfficientNet model once for batch
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    efficientnet_model = load_pretrained_model(device=device)
     # Example: Load preprocessed metadata
     metadata_path = '../images/processed/preprocessed_metadata.csv'
     if os.path.exists(metadata_path):
         metadata_df = pd.read_csv(metadata_path)
-        
         # Get image paths (use first 100 for testing)
         image_paths = metadata_df['local_path'].tolist()[:100]
-        
         # Extract features in batches
         features = extractor.extract_features_batch(
             image_paths=image_paths,
@@ -547,13 +808,10 @@ def main():
             output_dir='../features/batches',
             batch_size=20  # Smaller batches for testing
         )
-        
         # Analyze features
         analysis = extractor.get_feature_analysis(features)
-        
         # Plot analysis
         extractor.plot_feature_analysis(analysis)
-        
         # Print summary
         for ft, feature_array in features.items():
             if len(feature_array) > 0:

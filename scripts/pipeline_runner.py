@@ -23,9 +23,15 @@ from tqdm import tqdm
 from PIL import Image
 
 # Import our pipeline components
-from data_loader import AzureBlobLoader
-from image_preprocessor import ImagePreprocessor  
-from feature_extractor import FeatureExtractor
+try:
+    from .data_loader import AzureBlobLoader
+    from .image_preprocessor import ImagePreprocessor  
+    from .feature_extractor import FeatureExtractor
+except ImportError:
+    # Fallback for direct execution
+    from data_loader import AzureBlobLoader
+    from image_preprocessor import ImagePreprocessor  
+    from feature_extractor import FeatureExtractor
 
 
 class SkinVisionPipeline:
@@ -38,7 +44,7 @@ class SkinVisionPipeline:
                  storage_account: str = "w281saysxxfypm",
                  target_size: Tuple[int, int] = (450, 450),
                  batch_size: int = 100,
-                 base_output_dir: str = "../pipeline_output"):
+                 base_output_dir: str = "pipeline_output"):
         """
         Initialize the pipeline.
         
@@ -141,9 +147,14 @@ class SkinVisionPipeline:
                         max_images=max_images_per_dataset,
                         batch_size=self.batch_size
                     )
-                    # Pass the column name explicitly to the image_preprocessor to reduce tight coupling
-                        
-# Removed placeholder code for the "ham10000" dataset.
+                    
+                # Add support for HAM10000 dataset if needed
+                elif dataset == "ham10000":
+                    df = self.data_loader.prepare_ham10000_dataset(
+                        local_dir=str(self.base_output_dir / "data" / "raw"),
+                        max_images=max_images_per_dataset,
+                        batch_size=self.batch_size
+                    )
                 else:
                     self.logger.error(f"Unknown dataset: {dataset}")
                     continue
@@ -196,11 +207,13 @@ class SkinVisionPipeline:
                 output_dir.mkdir(parents=True, exist_ok=True)
                 
                 if apply_augmentation and balance_dataset:
+                    self.logger.info("Attempting to balance dataset")
                     # STEP 1: Create balanced strategy (no processing yet)
                     augmentation_strategy, balanced_df = self.image_preprocessor.create_balanced_dataset(
                         metadata_df=df,
                         target_samples_per_class=1000
                     )
+                    self.logger.info("A. Successfully created balanced strategy")
                     
                     # STEP 2: Now actually process the balanced dataset with augmentations
                     preprocessed_df = self.image_preprocessor.preprocess_batch(
@@ -208,9 +221,12 @@ class SkinVisionPipeline:
                         output_dir=str(output_dir),
                         metadata_df=balanced_df,
                         augmentations_per_class=augmentation_strategy,
-                        batch_size=self.batch_size
+                        batch_size=self.batch_size,
+                        target_samples_per_class=1000
                     )
+                    self.logger.info("B. Successfully processed dataset with augmentations")
                 else:
+                    self.logger.info("Skipping balancing and preprocessing")
                     # Standard preprocessing without balancing
                     augmentations_per_class = None
                     if apply_augmentation:
@@ -223,8 +239,10 @@ class SkinVisionPipeline:
                         output_dir=str(output_dir),
                         metadata_df=df,
                         augmentations_per_class=augmentations_per_class,
-                        batch_size=self.batch_size
+                        batch_size=self.batch_size,
+                        target_samples_per_class=1000 if apply_augmentation else len(df)
                     )
+                    self.logger.info("C. Successfully processed dataset with augmentations")
                 
                 preprocessed_dfs[dataset] = preprocessed_df
                 
@@ -386,10 +404,14 @@ class SkinVisionPipeline:
                             image_name = row['image']
                             
                             # Generate all augmentations for this image
-                            processed_images = self.image_preprocessor.preprocess_single_image(
-                                original_path, 
-                                augmentations=aug_methods
-                            )
+                            try:
+                                processed_images = self.image_preprocessor.preprocess_single_image(
+                                    original_path, 
+                                    augmentations=aug_methods
+                                )
+                            except Exception as e:
+                                self.logger.error(f"Failed to process {image_name}: {e}")
+                                continue
                             
                             # Save each augmented version
                             for processed_img, aug_method in zip(processed_images, aug_methods):
@@ -406,38 +428,52 @@ class SkinVisionPipeline:
                                 pil_img = Image.fromarray(processed_img.astype(np.uint8))
                                 pil_img.save(aug_path)
                                 
-                                # Record metadata for augmented image
+                                # Record metadata
                                 augmented_metadata.append({
                                     'original_image': image_name,
                                     'augmented_image': aug_filename,
                                     'local_path': str(aug_path),
-                                    'dx': class_name,
+                                    'dx': row['dx'],
                                     'augmentation': aug_method,
                                     'width': self.target_size[0],
                                     'height': self.target_size[1]
                                 })
                     
-                    # Create augmented DataFrame
                     augmented_df = pd.DataFrame(augmented_metadata)
                     
+                    # Final balancing: ensure exactly target_samples_per_class per class
+                    balanced_final = []
+                    for class_name in augmented_df['dx'].unique():
+                        class_data = augmented_df[augmented_df['dx'] == class_name]
+                        current_count = len(class_data)
+                        
+                        if current_count > target_samples_per_class:
+                            # Downsample to exactly target
+                            sampled = class_data.sample(n=target_samples_per_class, random_state=42)
+                            balanced_final.append(sampled)
+                            self.logger.info(f"Pre-augmentation: {class_name} downsampled from {current_count} to {target_samples_per_class}")
+                        else:
+                            balanced_final.append(class_data)
+                            if current_count < target_samples_per_class:
+                                self.logger.warning(f"Pre-augmentation: {class_name} has only {current_count} samples (target: {target_samples_per_class})")
+                    
+                    augmented_df = pd.concat(balanced_final, ignore_index=True)
+                
                 else:
-                    # No balancing - just basic preprocessing and minimal augmentation
+                    # No balancing - just process original images without augmentation
                     augmented_metadata = []
                     
-                    self.logger.info(f"Basic preprocessing for {len(df)} images")
-                    
-                    for _, row in tqdm(df.iterrows(), desc="Basic processing", total=len(df)):
+                    for _, row in tqdm(df.iterrows(), desc=f"Processing {dataset} (no balancing)", total=len(df)):
                         original_path = row['local_path']
                         image_name = row['image']
-                        label = row['dx']
                         
-                        # Just basic preprocessing (no augmentation)
-                        processed_images = self.image_preprocessor.preprocess_single_image(
-                            original_path, 
-                            augmentations=['rot0']  # Just original
-                        )
-                        
-                        if processed_images:
+                        try:
+                            # Just preprocess without augmentation
+                            processed_images = self.image_preprocessor.preprocess_single_image(
+                                original_path, 
+                                augmentations=['rot0']  # Original only
+                            )
+                            
                             processed_img = processed_images[0]
                             
                             # Create filename
@@ -457,11 +493,14 @@ class SkinVisionPipeline:
                                 'original_image': image_name,
                                 'augmented_image': proc_filename,
                                 'local_path': str(proc_path),
-                                'dx': label,
+                                'dx': row['dx'],
                                 'augmentation': 'rot0',
                                 'width': self.target_size[0],
                                 'height': self.target_size[1]
                             })
+                        except Exception as e:
+                            self.logger.error(f"Failed to process {image_name}: {e}")
+                            continue
                     
                     augmented_df = pd.DataFrame(augmented_metadata)
                 

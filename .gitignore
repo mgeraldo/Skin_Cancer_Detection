@@ -9,3 +9,14 @@ terraform/terraform.tfstate.backup
 data/ham_with_diagnosis.csv
 data/isic_with_ground_truth.csv
 notebooks/features_batches
+images/
+data/isic_images/
+scripts/__pycache__/
+data/ISIC_2019_Training_Metadata.csv
+.gitignore
+data/ISIC_2019_Training_GroundTruth.csv
+models/vgg16_skinlesion_best_model.pth
+models/vgg16_skinlesion_inference_20250728_142515.pth
+pipeline_output/
+.data
+.datasets
