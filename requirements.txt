@@ -62,12 +62,7 @@ notebook>=6.5.0
 # ================================
 # COLAB COMPATIBILITY NOTES
 # ================================
-# Google Colab comes with most packages pre-installed.
-# For VGG16 training, you may only need:
-# !pip install PyWavelets (if not available)
-# 
-# PyTorch is pre-installed in Colab with CUDA support
-# OpenCV is usually pre-installed as cv2
+
 
 # ================================
 # USAGE EXAMPLES
